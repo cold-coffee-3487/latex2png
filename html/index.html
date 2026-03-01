@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>LaTeX to PNG Studio</title>
+    <script src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-svg.js"></script>
+    <style>
+        body { font-family: -apple-system, sans-serif; background: #f0f2f5; padding: 20px; color: #1c1e21; }
+        .app-container { max-width: 650px; margin: auto; background: white; padding: 25px; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.1); }
+        .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0; }
+        textarea { width: 100%; height: 80px; padding: 10px; border: 1px solid #ddd; border-radius: 6px; box-sizing: border-box; font-family: monospace; resize: vertical; }
+        .full-width { grid-column: span 2; }
+        label { display: block; font-size: 12px; font-weight: bold; margin-bottom: 5px; color: #606770; }
+        input[type="number"], input[type="text"], input[type="range"] { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; box-sizing: border-box; }
+        button { width: 100%; padding: 14px; background: #0084ff; color: white; border: none; border-radius: 6px; font-weight: 600; cursor: pointer; margin-top: 10px; }
+        button:hover { background: #0073e6; }
+        
+        .output-section { margin-top: 30px; text-align: center; border-top: 2px solid #f0f2f5; padding-top: 20px; }
+        #final-png { 
+            max-width: 100%; 
+            border: 1px solid #ccc;
+            /* Checkerboard background to visualize transparency */
+            background-image: linear-gradient(45deg, #eee 25%, transparent 25%), linear-gradient(-45deg, #eee 25%, transparent 25%), linear-gradient(45deg, transparent 75%, #eee 75%), linear-gradient(-45deg, transparent 75%, #eee 75%);
+            background-size: 20px 20px;
+            background-position: 0 0, 0 10px, 10px -10px, -10px 0px;
+        }
+        #temp-render { position: absolute; left: -9999px; top: 0; } 
+    </style>
+</head>
+<body>
+
+<div class="app-container">
+    <h2>LaTeX to PNG Studio</h2>
+    <div>Version 0.1</div>
+    <div class="grid">
+        <div class="full-width">
+            <label>LaTeX Input</label>
+            <textarea id="latex-input">e^{i\pi} + 1 = 0</textarea>
+        </div>
+        
+        <div>
+            <label>Font Color</label>
+            <input type="color" id="font-color" value="#000000">
+        </div>
+        <div>
+            <label>Background Color</label>
+            <input type="color" id="bg-color" value="#ffffff">
+        </div>
+        
+        <div>
+            <label>Width (px)</label>
+            <input type="number" id="img-width" value="500">
+        </div>
+        <div>
+            <label>Height (px)</label>
+            <input type="number" id="img-height" value="250">
+        </div>
+
+        <div class="full-width">
+            <label>Formula Scale: <span id="scale-val">1.0</span>x</label>
+            <input type="range" id="math-scale" min="0.1" max="5" step="0.1" value="1.0" oninput="document.getElementById('scale-val').innerText = this.value">
+        </div>
+
+        <div class="full-width">
+            <input type="checkbox" id="transparent-bg"> <label style="display:inline" for="transparent-bg">Transparent Background</label>
+        </div>
+
+        <button onclick="renderToImage()" class="full-width">Generate Render</button>
+    </div>
+
+    <div class="output-section">
+        <label>Result (Right-click image to save):</label><br>
+        <img id="final-png" alt="Rendered math will appear here">
+        <button onclick="downloadPNG()" class="full-width" style="background: #28a745;">Download PNG</button>
+    </div>
+</div>
+
+<div id="temp-render"></div>
+
+<script>
+async function renderToImage() {
+    const input = document.getElementById('latex-input').value;
+    const temp = document.getElementById('temp-render');
+    const width = parseInt(document.getElementById('img-width').value) || 500;
+    const height = parseInt(document.getElementById('img-height').value) || 250;
+    const fontColor = document.getElementById('font-color').value;
+    const userScale = parseFloat(document.getElementById('math-scale').value);
+    const isTransparent = document.getElementById('transparent-bg').checked;
+    const bgColor = isTransparent ? 'rgba(0,0,0,0)' : document.getElementById('bg-color').value;
+
+    // 1. Render to SVG
+    temp.innerHTML = `\\(\\color{${fontColor}}{${input}}\\)`;
+    await MathJax.typesetPromise([temp]);
+    
+    const svg = temp.querySelector('svg');
+    if (!svg) return;
+
+    // 2. Setup Canvas
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = width;
+    canvas.height = height;
+
+    if (!isTransparent) {
+        ctx.fillStyle = bgColor;
+        ctx.fillRect(0, 0, width, height);
+    }
+
+    // 3. Process SVG dimensions
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const svgBlob = new Blob([svgData], {type: 'image/svg+xml;charset=utf-8'});
+    const url = URL.createObjectURL(svgBlob);
+
+    const img = new Image();
+    img.onload = function() {
+        // Calculate centered position with the user's scale factor
+        const drawW = img.width * userScale;
+        const drawH = img.height * userScale;
+        const x = (width - drawW) / 2;
+        const y = (height - drawH) / 2;
+
+        ctx.drawImage(img, x, y, drawW, drawH);
+        
+        document.getElementById('final-png').src = canvas.toDataURL("image/png");
+        URL.revokeObjectURL(url);
+    };
+    img.src = url;
+}
+</script>
+
+
+
+<script>
+    function downloadPNG() {
+        const link = document.createElement('a');
+        link.download = 'latex-render.png';
+        link.href = document.getElementById('final-png').src;
+        link.click();
+    }
+</script>
+
+</body>
+</html>
